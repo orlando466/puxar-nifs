@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - Sistema de Consulta de NIFs</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .registro-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 450px;
+            padding: 40px;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .logo p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 5px rgba(102, 126, 234, 0.1);
+        }
+
+        .requirements {
+            background: #f5f5f5;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .requirement-item {
+            margin: 5px 0;
+        }
+
+        .requirement-item.ok {
+            color: #3c3;
+        }
+
+        .requirement-item.not-ok {
+            color: #c33;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .link {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .link a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .link a:hover {
+            text-decoration: underline;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success-message {
+            background: #efe;
+            color: #3c3;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="registro-container">
+        <div class="logo">
+            <h1>🔐 Puxar NIFs</h1>
+            <p>Crie sua conta</p>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage"></div>
+
+        <form id="registroForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="3-50 caracteres" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+
+            <div class="form-group">
+                <label for="nome_completo">Nome Completo (opcional)</label>
+                <input type="text" id="nome_completo" name="nome_completo">
+            </div>
+
+            <div class="form-group">
+                <label for="senha">Senha</label>
+                <input type="password" id="senha" name="senha" required>
+                <div class="requirements">
+                    <div class="requirement-item not-ok" id="req-length">
+                        ✓ Mínimo 8 caracteres
+                    </div>
+                    <div class="requirement-item not-ok" id="req-upper">
+                        ✓ Pelo menos 1 letra maiúscula
+                    </div>
+                    <div class="requirement-item not-ok" id="req-lower">
+                        ✓ Pelo menos 1 letra minúscula
+                    </div>
+                    <div class="requirement-item not-ok" id="req-number">
+                        ✓ Pelo menos 1 número
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="confirmacao">Confirmar Senha</label>
+                <input type="password" id="confirmacao" name="confirmacao" required>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Registrando...</p>
+            </div>
+
+            <button type="submit" class="btn" id="submitBtn">Registrar</button>
+        </form>
+
+        <div class="link">
+            Já tem conta? <a href="/login">Faça login aqui</a>
+        </div>
+    </div>
+
+    <script>
+        const senhaInput = document.getElementById('senha');
+
+        senhaInput.addEventListener('input', (e) => {
+            const senha = e.target.value;
+
+            // Verificar requisitos
+            document.getElementById('req-length').className = 
+                senha.length >= 8 ? 'requirement-item ok' : 'requirement-item not-ok';
+
+            document.getElementById('req-upper').className = 
+                /[A-Z]/.test(senha) ? 'requirement-item ok' : 'requirement-item not-ok';
+
+            document.getElementById('req-lower').className = 
+                /[a-z]/.test(senha) ? 'requirement-item ok' : 'requirement-item not-ok';
+
+            document.getElementById('req-number').className = 
+                /[0-9]/.test(senha) ? 'requirement-item ok' : 'requirement-item not-ok';
+        });
+
+        document.getElementById('registroForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const nome_completo = document.getElementById('nome_completo').value;
+            const senha = document.getElementById('senha').value;
+            const confirmacao = document.getElementById('confirmacao').value;
+
+            // Validar senhas
+            if (senha !== confirmacao) {
+                document.getElementById('errorMessage').textContent = 'As senhas não conferem';
+                document.getElementById('errorMessage').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('errorMessage').style.display = 'none';
+
+            try {
+                const response = await fetch('/registro', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, email, nome_completo, senha })
+                });
+
+                const data = await response.json();
+
+                if (data.sucesso) {
+                    document.getElementById('successMessage').textContent = 
+                        'Conta criada com sucesso! Redirecionando...';
+                    document.getElementById('successMessage').style.display = 'block';
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                } else {
+                    document.getElementById('errorMessage').textContent = 
+                        data.mensagem || 'Erro ao registrar';
+                    document.getElementById('errorMessage').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('errorMessage').textContent = 'Erro na conexão';
+                document.getElementById('errorMessage').style.display = 'block';
+                console.error(error);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
