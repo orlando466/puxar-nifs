@@ -1,137 +1,68 @@
-import mysql.connector
-from mysql.connector import Error
+from __future__ import annotations
+
+import requests
+
 from config import Config
-import logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-class Database:
-    """Gerenciador de conexão com MySQL"""
-    
+class NIFManager:
     def __init__(self):
-        self.connection = None
-    
-    def connect(self):
-        """Conecta ao banco de dados"""
+        self.base_url = Config.API_URL.rstrip('/')
+        self.endpoint = Config.API_ENDPOINT
+        self.api_key = Config.API_KEY
+
+    def consultar_nif(self, nif: str):
+        headers = {'Content-Type': 'application/json'}
+        if self.api_key:
+            headers['Authorization'] = f'Bearer {self.api_key}'
+        url = f'{self.base_url}{self.endpoint}/{nif}'
         try:
-            self.connection = mysql.connector.connect(**Config.get_db_config())
-            logger.info("✅ Conexão com banco de dados estabelecida")
-            return self.connection
-        except Error as e:
-            logger.error(f"❌ Erro ao conectar ao banco: {e}")
-            raise
-    
-    def disconnect(self):
-        """Desconecta do banco de dados"""
-        if self.connection and self.connection.is_connected():
-            self.connection.close()
-            logger.info("✅ Conexão com banco de dados fechada")
-    
-    def execute_query(self, query, params=None):
-        """Executa uma query e retorna os resultados"""
-        cursor = None
-        try:
-            cursor = self.connection.cursor(dictionary=True)
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            return cursor.fetchall()
-        except Error as e:
-            logger.error(f"❌ Erro ao executar query: {e}")
-            raise
-        finally:
-            if cursor:
-                cursor.close()
-    
-    def execute_insert_update(self, query, params=None):
-        """Executa insert ou update e retorna o ID inserido"""
-        cursor = None
-        try:
-            cursor = self.connection.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            self.connection.commit()
-            logger.info(f"✅ Query executada com sucesso (afetadas {cursor.rowcount} linhas)")
-            return cursor.lastrowid
-        except Error as e:
-            self.connection.rollback()
-            logger.error(f"❌ Erro ao executar insert/update: {e}")
-            raise
-        finally:
-            if cursor:
-                cursor.close()
-    
-    def create_tables(self):
-        """Cria as tabelas necessárias"""
-        queries = [
-            # Tabela de usuários
-            """
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                email VARCHAR(100) UNIQUE NOT NULL,
-                senha_hash VARCHAR(255) NOT NULL,
-                nome_completo VARCHAR(100),
-                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                ativo BOOLEAN DEFAULT TRUE,
-                data_ultimo_acesso TIMESTAMP NULL,
-                INDEX idx_username (username),
-                INDEX idx_email (email)
-            )
-            """,
-            # Tabela de NIFs
-            """
-            CREATE TABLE IF NOT EXISTS nifs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                usuario_id INT NOT NULL,
-                nif VARCHAR(20) NOT NULL,
-                nome VARCHAR(255),
-                email VARCHAR(255),
-                telefone VARCHAR(20),
-                endereco TEXT,
-                cidade VARCHAR(100),
-                pais VARCHAR(100),
-                data_consulta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                status VARCHAR(50) DEFAULT 'ativo',
-                UNIQUE KEY unique_usuario_nif (usuario_id, nif),
-                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
-                INDEX idx_nif (nif),
-                INDEX idx_usuario_id (usuario_id),
-                INDEX idx_data_consulta (data_consulta)
-            )
-            """,
-            # Tabela de logs de acesso
-            """
-            CREATE TABLE IF NOT EXISTS logs_acesso (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                usuario_id INT NOT NULL,
-                acao VARCHAR(100),
-                descricao TEXT,
-                ip_address VARCHAR(50),
-                data_acao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
-                INDEX idx_usuario_id (usuario_id),
-                INDEX idx_data_acao (data_acao)
-            )
-            """
-        ]
-        
-        cursor = None
-        try:
-            cursor = self.connection.cursor()
-            for query in queries:
-                cursor.execute(query)
-            self.connection.commit()
-            logger.info("✅ Tabelas criadas com sucesso")
-        except Error as e:
-            logger.error(f"❌ Erro ao criar tabelas: {e}")
-            raise
-        finally:
-            if cursor:
-                cursor.close()
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                return {'sucesso': True, 'dados': response.json()}
+            if response.status_code == 404:
+                return {'sucesso': False, 'mensagem': 'NIF não encontrado'}
+            return {'sucesso': False, 'mensagem': f'Erro da API: {response.status_code}'}
+        except requests.RequestException as exc:
+            return {'sucesso': False, 'mensagem': f'Erro de conexão: {exc}'}
+
+    def consultar_e_salvar_nif(self, nif, db, usuario_id):
+        resultado = self.consultar_nif(nif)
+        if not resultado['sucesso']:
+            return resultado
+
+        dados = resultado['dados']
+        db.execute_insert_update(
+            '''
+            INSERT INTO nifs (usuario_id, nif, nome, email, telefone, endereco, cidade, pais)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                nome=VALUES(nome), email=VALUES(email), telefone=VALUES(telefone),
+                endereco=VALUES(endereco), cidade=VALUES(cidade), pais=VALUES(pais),
+                ultima_atualizacao = CURRENT_TIMESTAMP
+            ''',
+            (
+                usuario_id,
+                nif,
+                dados.get('nome') or '',
+                dados.get('email') or '',
+                dados.get('telefone') or '',
+                dados.get('endereco') or '',
+                dados.get('cidade') or '',
+                dados.get('pais') or '',
+            ),
+        )
+        return {'sucesso': True, 'mensagem': 'NIF consultado e salvo', 'dados': dados}
+
+    def listar_nifs_usuario(self, db, usuario_id, pagina=1, limite=10):
+        offset = (pagina - 1) * limite
+        itens = db.execute_query(
+            '''
+            SELECT id, nif, nome, email, telefone, endereco, cidade, pais, data_consulta
+            FROM nifs WHERE usuario_id = %s ORDER BY data_consulta DESC LIMIT %s OFFSET %s
+            ''',
+            (usuario_id, limite, offset),
+        )
+        total = db.execute_query('SELECT COUNT(*) as total FROM nifs WHERE usuario_id = %s', (usuario_id,))[0]['total']
+        return {'nifs': itens, 'total': total, 'pagina': pagina, 'limite': limite}
+

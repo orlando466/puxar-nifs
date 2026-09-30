@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import os
+from functools import wraps
+
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+
+from auth_manager import AuthManager
+from config import Config
+from database import Database
+from nif_manager import NIFManager
+
+app = Flask(__name__)
+app.secret_key = Config.FLASK_SECRET_KEY
+
+db = Database()
+db.connect()
+db.create_tables()
+auth = AuthManager(db)
+nif_manager = NIFManager()
+
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'usuario_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def json_login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'usuario_id' in session:
+            return f(*args, **kwargs)
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '', 1)
+            ver = auth.verificar_token(token)
+            if ver.get('valido'):
+                session['usuario_id'] = ver['usuario_id']
+                session['username'] = ver['username']
+                return f(*args, **kwargs)
+        return jsonify({'erro': 'Não autorizado'}), 401
+    return wrapper
+
+
+@app.route('/')
+def index():
+    if 'usuario_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+
+@app.route('/registro', methods=['GET', 'POST'])
+def registro():
+    if request.method == 'POST':
+        dados = request.get_json(silent=True) or {}
+        resultado = auth.registrar_usuario(
+            username=dados.get('username'),
+            email=dados.get('email'),
+            senha=dados.get('senha'),
+            nome_completo=dados.get('nome_completo', ''),
+        )
+        return jsonify(resultado)
+    return render_template('registro.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        dados = request.get_json(silent=True) or {}
+        resultado = auth.login(dados.get('username'), dados.get('senha'))
+        if resultado['sucesso']:
+            session['usuario_id'] = resultado['usuario']['id']
+            session['username'] = resultado['usuario']['username']
+            session['email'] = resultado['usuario']['email']
+            session['token'] = resultado['token']
+            return jsonify({'sucesso': True})
+        return jsonify(resultado), 401
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    usuario = auth.obter_usuario(session['usuario_id'])
+    if not usuario['sucesso']:
+        return redirect(url_for('logout'))
+    return render_template('dashboard.html', usuario=usuario['usuario'])
+
+
+@app.route('/perfil')
+@login_required
+def perfil():
+    usuario = auth.obter_usuario(session['usuario_id'])
+    if not usuario['sucesso']:
+        return redirect(url_for('logout'))
+    return render_template('perfil.html', usuario=usuario['usuario'])
+
+
+@app.route('/api/usuario/perfil')
+@json_login_required
+def api_perfil():
+    return jsonify(auth.obter_usuario(session['usuario_id']))
+
+
+@app.route('/api/usuario/atualizar', methods=['POST'])
+@json_login_required
+def api_atualizar_usuario():
+    dados = request.get_json(silent=True) or {}
+    resultado = auth.atualizar_usuario(
+        session['usuario_id'],
+        nome_completo=dados.get('nome_completo'),
+        email=dados.get('email')
+    )
+    return jsonify(resultado)
+
+
+@app.route('/api/usuario/mudar-senha', methods=['POST'])
+@json_login_required
+def api_mudar_senha():
+    dados = request.get_json(silent=True) or {}
+    resultado = auth.mudar_senha(
+        session['usuario_id'],
+        dados.get('senha_atual'),
+        dados.get('senha_nova'),
+    )
+    return jsonify(resultado)
+
+
+@app.route('/api/nif/consultar', methods=['POST'])
+@json_login_required
+def api_consultar_nif():
+    dados = request.get_json(silent=True) or {}
+    nif = (dados.get('nif') or '').strip()
+    if not nif:
+        return jsonify({'sucesso': False, 'mensagem': 'NIF não informado'}), 400
+
+    resultado = nif_manager.consultar_e_salvar_nif(nif, db, session['usuario_id'])
+    if resultado['sucesso']:
+        auth.registrar_log(session['usuario_id'], 'CONSULTAR_NIF', f'NIF consultado: {nif}')
+        return jsonify({'sucesso': True, 'mensagem': 'NIF consultado e salvo com sucesso'})
+    return jsonify(resultado), 400
+
+
+@app.route('/api/nif/listar')
+@json_login_required
+def api_listar_nifs():
+    pagina = request.args.get('pagina', default=1, type=int)
+    limite = request.args.get('limite', default=10, type=int)
+    dados = nif_manager.listar_nifs_usuario(db, session['usuario_id'], pagina, limite)
+    return jsonify({'sucesso': True, **dados})
+
+
+@app.route('/api/nif/deletar/<int:nif_id>', methods=['DELETE'])
+@json_login_required
+def api_deletar_nif(nif_id):
+    existe = db.execute_query('SELECT id FROM nifs WHERE id = %s AND usuario_id = %s', (nif_id, session['usuario_id']))
+    if not existe:
+        return jsonify({'sucesso': False, 'mensagem': 'NIF não encontrado'}), 404
+    db.execute_insert_update('DELETE FROM nifs WHERE id = %s', (nif_id,))
+    auth.registrar_log(session['usuario_id'], 'DELETAR_NIF', f'NIF deletado: {nif_id}')
+    return jsonify({'sucesso': True, 'mensagem': 'NIF deletado com sucesso'})
+
+
+@app.errorhandler(404)
+def page_404(error):
+    return render_template('404.html'), 404
+
+
+@app.errorhandler(500)
+def page_500(error):
+    return render_template('500.html'), 500
+
+
+if __name__ == '__main__':
+    app.run(debug=Config.DEBUG, host='0.0.0.0', port=5000)

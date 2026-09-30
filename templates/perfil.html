@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; }
+        nav { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        nav a { color: #fff; text-decoration: none; margin-left: 1rem; }
+        .container { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+        .box { background: white; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.07); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1rem; }
+        input, button { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #d1d5db; }
+        button { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; border: none; cursor: pointer; }
+        .list { list-style: none; padding: 0; margin: 0; }
+        .list li { border-bottom: 1px solid #e5e7eb; padding: 1rem 0; }
+        .btn-danger { background: #dc2626; }
+        .alert { display: none; border-radius: 8px; padding: 0.8rem; margin-bottom: 1rem; }
+        .alert.error { background: #fee2e2; color: #b91c1c; }
+        .alert.success { background: #dcfce7; color: #166534; }
+    </style>
+</head>
+<body>
+    <nav>
+        <div><strong>Puxar NIFs</strong></div>
+        <div>
+            <a href="/perfil">Perfil</a>
+            <a href="/logout">Sair</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="box">
+            <h2>Bem-vindo, {{ usuario.username }}</h2>
+            <p>Seu painel para consultar e gerir NIFs.</p>
+        </div>
+
+        <div class="grid">
+            <div class="box">
+                <h3>Consultar NIF</h3>
+                <div id="msg" class="alert"></div>
+                <div style="display: flex; gap: 0.75rem;">
+                    <input id="nifInput" type="text" placeholder="Digite o NIF" />
+                    <button id="consultarBtn">Consultar</button>
+                </div>
+            </div>
+
+            <div class="box">
+                <h3>Resumo</h3>
+                <p>Usuário: {{ usuario.username }}</p>
+                <p>Email: {{ usuario.email }}</p>
+            </div>
+        </div>
+
+        <div class="box">
+            <h3>Meus NIFs</h3>
+            <ul id="nifList" class="list"></ul>
+        </div>
+    </div>
+
+    <script>
+        async function carregarNifs() {
+            try {
+                const response = await fetch('/api/nif/listar');
+                const data = await response.json();
+                const list = document.getElementById('nifList');
+                if (!data.sucesso || !data.nifs || data.nifs.length === 0) {
+                    list.innerHTML = '<li>Nenhum NIF cadastrado.</li>';
+                    return;
+                }
+                list.innerHTML = data.nifs.map(item => `
+                    <li>
+                        <strong>${item.nif}</strong> - ${item.nome || 'Sem nome'}
+                        <div style="margin-top: 0.5rem;">
+                            <button class="btn-danger" onclick="deletarNif(${item.id})">Deletar</button>
+                        </div>
+                    </li>
+                `).join('');
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function consultarNif() {
+            const nif = document.getElementById('nifInput').value.trim();
+            const msg = document.getElementById('msg');
+            if (!nif) {
+                msg.className = 'alert error';
+                msg.textContent = 'Digite um NIF';
+                msg.style.display = 'block';
+                return;
+            }
+            try {
+                const response = await fetch('/api/nif/consultar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nif })
+                });
+                const data = await response.json();
+                if (response.ok && data.sucesso) {
+                    msg.className = 'alert success';
+                    msg.textContent = 'NIF consultado com sucesso';
+                    msg.style.display = 'block';
+                    document.getElementById('nifInput').value = '';
+                    carregarNifs();
+                } else {
+                    msg.className = 'alert error';
+                    msg.textContent = data.mensagem || 'Erro ao consultar';
+                    msg.style.display = 'block';
+                }
+            } catch (error) {
+                msg.className = 'alert error';
+                msg.textContent = 'Erro de conexão';
+                msg.style.display = 'block';
+            }
+        }
+
+        async function deletarNif(id) {
+            if (!confirm('Deseja realmente apagar este NIF?')) return;
+            const response = await fetch(`/api/nif/deletar/${id}`, { method: 'DELETE' });
+            const data = await response.json();
+            if (response.ok && data.sucesso) {
+                carregarNifs();
+            } else {
+                alert(data.mensagem || 'Erro ao deletar');
+            }
+        }
+
+        document.getElementById('consultarBtn').addEventListener('click', consultarNif);
+        carregarNifs();
+    </script>
+</body>
+</html>

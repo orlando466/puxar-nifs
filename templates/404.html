@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perfil</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
+        .container { max-width: 700px; margin: 3rem auto; background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 12px 25px rgba(0,0,0,0.08); }
+        h1 { margin-top: 0; }
+        .field { margin-bottom: 1rem; }
+        label { font-weight: 600; display: block; margin-bottom: 0.5rem; }
+        input { width: 100%; padding: 0.8rem; border: 1px solid #d1d5db; border-radius: 8px; }
+        button { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; padding: 0.9rem 1.2rem; border-radius: 8px; cursor: pointer; }
+        .ok { color: #166534; }
+        .error { color: #b91c1c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👤 Perfil</h1>
+        <div class="field">
+            <label>Username</label>
+            <input value="{{ usuario.username }}" readonly />
+        </div>
+        <div class="field">
+            <label>Email</label>
+            <input value="{{ usuario.email }}" readonly />
+        </div>
+        <div class="field">
+            <label>Nome completo</label>
+            <input value="{{ usuario.nome_completo or '' }}" readonly />
+        </div>
+        <a href="/dashboard"><button type="button">Voltar ao dashboard</button></a>
+    </div>
+</body>
+</html>
